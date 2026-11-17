@@ -5,7 +5,7 @@ A Vencord plugin that lets you add, remove, and customize Discord profile badges
 **Only you see the changes.** This plugin does not grant real badges, Nitro, or permissions.
 
 ## Preview
-![Badge Larper preview](./preview.png)
+![Badge Larper preview](./Discord_qmwCejmkbV.png)
 
 ## Features
 

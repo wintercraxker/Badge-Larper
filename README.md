@@ -6,7 +6,9 @@ A Vencord plugin that lets you add, remove, and customize Discord profile badges
 
 ## Preview
 ![Badge Larper preview](./Discord_qmwCejmkbV.png)
-
+  <h6><strong>Support For These Clients</strong></h6>
+  <a href="https://vencord.dev"><img src="https://i.imgur.com/O9cPuLV.png" alt="Vencord" width="50"></a>
+  
 ## Features
 
 - Add and remove custom badges on user profiles.

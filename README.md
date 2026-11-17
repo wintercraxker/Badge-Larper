@@ -1,14 +1,19 @@
+<div align="center">
+
 # Badge Larper
 
-A Vencord plugin that lets you add, remove, and customize Discord profile badges locally. All changes are client-side and purely visual.
+**Customize Discord profile badges with Vencord.**
 
-**Only you see the changes.** This plugin does not grant real badges, Nitro, or permissions.
+Client-side only · Visual changes · No real badges or permissions granted
 
-## Preview
-![Badge Larper preview](./Discord_qmwCejmkbV.png)
-  <h6><strong>Support For These Clients</strong></h6>
-  <a href="https://vencord.dev"><img src="https://i.imgur.com/O9cPuLV.png" alt="Vencord" width="50"></a>
-  
+<img src="./Discord_qmwCejmkbV.png" alt="Badge Larper preview" width="300" />
+
+### Supported Clients
+
+<a href="https://vencord.dev"><img src="https://i.imgur.com/O9cPuLV.png" alt="Vencord" width="50" /></a>
+
+</div>
+
 ## Features
 
 - Add and remove custom badges on user profiles.

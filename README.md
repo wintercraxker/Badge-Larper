@@ -23,124 +23,100 @@ Client-side only · Visual changes · No real badges or permissions granted
 
 ## Installation — Windows
 
-Run the commands in **PowerShell**, one block at a time. **If a command fails, stop and resolve the error before continuing.**
+Use PowerShell and run the steps in order. If a command fails, stop before continuing.
 
 ### 1. Install the tools
 
-Install [Git](https://git-scm.com/downloads/win), [Node.js LTS](https://nodejs.org/en/download) (22 or newer for the inspected checkout), and [Discord Desktop](https://discord.com/download). Then open a new PowerShell window:
+Install [Git](https://git-scm.com/downloads/win), [Node.js LTS](https://nodejs.org/en/download), and [Discord Desktop](https://discord.com/download). Use a Node.js version supported by Vencord's `engines.node` field (22 or newer in the inspected checkout).
+
+Open a new PowerShell window and set up [Corepack](https://github.com/nodejs/corepack) to provide pnpm:
 
 ```powershell
- git --version
- node --version
- npm.cmd --version
+npm install --global corepack@latest
+corepack enable pnpm
 ```
+
+Corepack selects the pnpm version required by Vencord's `package.json` automatically. If you already use Corepack, you do not need to install it again. If an existing pnpm installation conflicts with setup, see Troubleshooting.
 
 ### 2. Download Vencord
 
+Open PowerShell in the folder where you want to keep Vencord, then run:
+
 ```powershell
-Set-Location $HOME
 git clone https://github.com/Vendicated/Vencord.git
-Set-Location .\Vencord
+cd Vencord
 ```
 
-**Already have Vencord's source?** Skip cloning and open PowerShell in that existing folder instead. Run all remaining commands from the folder containing Vencord's `package.json`.
+Already have the source? Open PowerShell in your existing Vencord folder instead. Keep this window open there for the remaining commands.
 
-### 3. Install the correct pnpm version
+### 3. Create the plugin folders
 
-This reads the version required by your Vencord checkout:
+In **Windows File Explorer**:
 
-```powershell
-$package = Get-Content .\package.json -Raw | ConvertFrom-Json
-$pnpmVersion = $package.packageManager -replace '\+.*$', ''
-npm.cmd install --global "$pnpmVersion"
-pnpm.cmd --version
-```
+1. Open your Vencord folder, then open `src`.
+2. If `userplugins` is missing, create it. **This is normal.**
+3. Inside `userplugins`, create a folder named `badgeSelector`.
 
-The inspected checkout requires **pnpm 12.15.0**. Other versions of Vencord may require a different version. If pnpm is not found after installation, reopen PowerShell and return to your Vencord folder.
+The folder must be named `badgeSelector`, even though the plugin is called Badge Larper. No PowerShell folder commands are needed.
 
-### 4. Add the plugin file
+### 4. Add the plugin
 
-Download this repository's `index.tsx` using GitHub's **Raw** file view, or download and extract its ZIP. Do not save the GitHub HTML page as source code.
-
-Create the destination folder:
-
-```powershell
-New-Item -ItemType Directory -Force .\src\userplugins\badgeSelector | Out-Null
-```
-
-Enter the full path to your downloaded `index.tsx` when prompted:
-
-```powershell
-$pluginFile = (Read-Host "Full path to your downloaded index.tsx").Trim('"')
-Copy-Item -LiteralPath $pluginFile -Destination .\src\userplugins\badgeSelector\index.tsx
-Test-Path .\src\userplugins\badgeSelector\index.tsx
-```
-
-The last command should print `True`. Keep the folder name **badgeSelector**, even though the plugin is called **Badge Larper**.
+Download `index.tsx` from this GitHub repository using **Raw → Download raw file**, or download and extract the repository ZIP. Place the file directly inside `badgeSelector` using File Explorer:
 
 ```text
-Vencord/src/userplugins/badgeSelector/index.tsx
+Vencord/
+└── src/
+    └── userplugins/
+        └── badgeSelector/
+            └── index.tsx
 ```
 
-Your standalone GitHub repository should contain:
-
-```text
-Badge-Larper/
-├── index.tsx
-└── README.md
-```
-
-Copy only `index.tsx` into Vencord, not a nested `Badge-Larper` folder. Make sure the file is not named `index.tsx.txt`.
+Do not add an extra nested `Badge-Larper` folder. Make sure the filename is `index.tsx`, not `index.tsx.txt` or a saved HTML page. You can enable **View → Show → File name extensions** in File Explorer to check it.
 
 ### 5. Install dependencies and build
 
-Run each command separately. Continue only when it succeeds:
+Back in PowerShell, inside your Vencord folder, run these commands one at a time:
 
 ```powershell
-pnpm.cmd install --frozen-lockfile
+pnpm install --frozen-lockfile
+pnpm build --dev
 ```
 
-```powershell
-pnpm.cmd test:ts
-```
-
-```powershell
-pnpm.cmd build --dev
-```
-
-**Do not install a build with unresolved errors.** The legacy toast calls noted above must be repaired first; successful bundling alone does not prove the plugin works.
+Wait for each command to finish successfully before continuing. These are supported by the inspected Vencord checkout; see the [official guide](https://docs.vencord.dev/installing/) if your checkout uses different scripts.
 
 ### 6. Install your custom build
 
-Only after the checks pass, fully quit Discord, including its system-tray process. From the same Vencord folder, run:
+Fully quit Discord, including its system-tray process. From the same Vencord folder, run:
 
 ```powershell
-pnpm.cmd inject
+pnpm inject
 ```
 
-Follow the installer prompts and select your Discord installation. This command installs your local custom build into Discord. These steps follow the inspected repository; see [Vencord's official guide](https://docs.vencord.dev/installing/) if your checkout uses different scripts.
+Follow the installer prompts and select your Discord installation. This installs the custom build you just made.
 
-### 7. Enable and use the plugin
+### 7. Enable Badge Larper
 
-1. Open Discord.
-2. Go to **User Settings → Vencord → Plugins**.
-3. Search for **Badge Larper** and enable it.
-4. Right-click a user and select **Manage Badges**.
-
-Previously used **BadgeSelector**? Enable **Badge Larper** after rebuilding. The name-based enable setting is separate; the badge-storage keys are unchanged.
+Open Discord → **User Settings → Vencord → Plugins**, search for **Badge Larper**, and enable it. Then right-click a user and select **Manage Badges**.
 
 ## Troubleshooting
 
-| Problem | What to do |
+| Problem | Fix |
 | --- | --- |
-| `pnpm is not recognized` | Repeat step 3, reopen PowerShell, and check `pnpm.cmd --version`. See [pnpm installation](https://pnpm.io/installation) if it remains unavailable. |
-| `npm.ps1` or `pnpm.ps1` is blocked | Use `npm.cmd` and `pnpm.cmd`. Do not disable PowerShell protections globally. |
-| Missing plugin / `Could not resolve "./userplugins/badgeSelector"` | Check the exact file path shown in step 4. Remove accidental nested folders or `.txt` extensions. |
-| `No matching export for Toasts` / `Toasts is not defined` | The current source imports `showToast` but still calls `Toasts.show`, `Toasts.Type.SUCCESS`, and `Toasts.genId()`. Use a repaired revision compatible with your checkout. The inspected API is `showToast({ text, variant: "success" })` from `@webpack/common`. |
-| Other build or TypeScript errors | Resolve the first reported error before proceeding. Menu-label types may also need adaptation. Do not delete badge features or bypass errors to install. |
-| Bulk changes return after restarting | Existing limitation: Reset does not save its final state, and Remove All does not explicitly save after deleting custom badges. Those handlers need a code fix; this documentation update does not change them. |
-| Plugin missing in Discord | Check the folder, rebuild, install from the same checkout, restart the correct Discord channel, and search for **Badge Larper**. |
-| Stops working after updates | Use matching plugin/Vencord versions and rebuild. Disable the plugin if it causes errors until compatibility is restored. |
+| `pnpm is not recognized` | Reopen PowerShell, return to the Vencord folder, and try `pnpm --version`. If it is still missing, repeat step 1 or check the [pnpm installation guide](https://pnpm.io/installation). |
+| Corepack setup conflicts with an existing pnpm installation | Follow the [official Corepack setup instructions](https://github.com/nodejs/corepack#manual-installs) for existing global installations. Do not force-overwrite files or edit Vencord's required version to hide the mismatch. |
+| Missing `userplugins` folder | This is expected in a fresh checkout. Create `src/userplugins/badgeSelector` manually in File Explorer, as shown in step 3. |
+| Plugin does not appear in Discord | Check the exact file path and extension, rebuild, install from that same checkout, and restart the correct Discord channel. Search for **Badge Larper**. Keep only one copy of the plugin. |
+| Build errors | Read the first error and confirm you have the latest plugin file and the pnpm version listed in Vencord's `packageManager` field. Source-code errors require a compatible plugin revision; do not install a failed build. |
+
+**PowerShell blocks `npm.ps1` or `pnpm.ps1`?** Use the corresponding `.cmd` command instead. For example:
+
+```powershell
+npm.cmd install --global corepack@latest
+corepack.cmd enable pnpm
+pnpm.cmd install --frozen-lockfile
+```
+
+Use the same substitution for the build and injection commands if needed. You do not need to disable Windows security protections.
 
 ## Disclaimer
 

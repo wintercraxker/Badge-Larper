@@ -15,8 +15,6 @@ A Vencord plugin that lets you add, remove, and customize Discord profile badges
 - Use **Give All Badges**, **Remove All Badges**, or **Reset to Original**.
 - Save individual preferences locally through Vencord's DataStore.
 
-> **Current compatibility issue:** This source still calls the old `Toasts` API. It needs a compatibility fix before installation on the inspected Vencord version. These instructions do not fix that code issue. See Troubleshooting below.
-
 ## Installation — Windows
 
 Run the commands in **PowerShell**, one block at a time. **If a command fails, stop and resolve the error before continuing.**

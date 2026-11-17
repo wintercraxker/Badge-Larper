@@ -11,7 +11,6 @@ Client-side only · Visual changes · No real badges or permissions granted
 ### Supported Clients
 
 <a href="https://vencord.dev"><img src="https://i.imgur.com/O9cPuLV.png" alt="Vencord" width="50" /></a>
-
 </div>
 
 ## Features

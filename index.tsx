@@ -6,29 +6,36 @@
 
 import * as DataStore from "@api/DataStore";
 import definePlugin from "@utils/types";
-import type {
-    ProfileBadge,
-    UserProfile,
-    UserProfileStore as ProfileStore,
-} from "@vencord/discord-types";
-import { findStoreLazy } from "@webpack";
-import { Menu, showToast } from "@webpack/common";
+import type { ProfileBadge, UserProfile } from "@vencord/discord-types";
+import { Menu, showToast, UserProfileStore } from "@webpack/common";
 
 type CustomBadge = ProfileBadge & { title?: string };
-const UserProfileStore = findStoreLazy("UserProfileStore") as ProfileStore;
-const userBadgesMap = new Map<string, CustomBadge[]>();
-const removedBadgesMap = new Map<string, Set<string>>();
+type ProfileGetter = typeof UserProfileStore.getUserProfile;
 
-interface CacheEntry {
+interface ProfileSnapshot {
     sourceProfile: UserProfile;
     signature: string;
     result: UserProfile;
 }
-const profileCache = new Map<string, CacheEntry>();
+
+const preferences = {
+    added: new Map<string, CustomBadge[]>(),
+    hidden: new Map<string, Set<string>>(),
+};
+
+const runtime = {
+    active: false,
+    loaded: false,
+    revision: 0,
+    saves: Promise.resolve(),
+    profiles: new Map<string, ProfileSnapshot>(),
+    originalGetter: undefined as ProfileGetter | undefined,
+    patchedGetter: undefined as ProfileGetter | undefined,
+};
 
 function getSignature(userId: string): string {
-    const own = userBadgesMap.get(userId);
-    const removed = removedBadgesMap.get(userId);
+    const own = preferences.added.get(userId);
+    const removed = preferences.hidden.get(userId);
     const ownPart = own ? own.map((b) => b.id).join(",") : "";
     const removedPart = removed ? Array.from(removed).sort().join(",") : "";
     return `${ownPart}|${removedPart}`;
@@ -320,27 +327,22 @@ const availableBadges = [
     },
 ];
 
-let enabled = false;
-let ready = false;
-let generation = 0;
-let saveQueue = Promise.resolve();
-
 async function loadData(run: number) {
-    await saveQueue;
+    await runtime.saves;
     const [savedUserBadges, savedRemovedBadges] = await DataStore.getMany<unknown>([
         "userBadges",
         "removedBadges",
     ]);
-    if (!enabled || run !== generation) return;
+    if (!runtime.active || run !== runtime.revision) return;
     const isRecord = (value: unknown): value is Record<string, unknown> =>
         !!value && typeof value === "object" && !Array.isArray(value);
     if (savedUserBadges !== undefined && !isRecord(savedUserBadges))
         throw new Error("Invalid saved badges");
     if (savedRemovedBadges !== undefined && !isRecord(savedRemovedBadges))
         throw new Error("Invalid saved hidden badges");
-    userBadgesMap.clear();
-    removedBadgesMap.clear();
-    profileCache.clear();
+    preferences.added.clear();
+    preferences.hidden.clear();
+    runtime.profiles.clear();
     if (savedUserBadges) {
         Object.entries(savedUserBadges).forEach(([userId, badges]) => {
             if (
@@ -367,7 +369,7 @@ async function loadData(run: number) {
                 }
                 return badge;
             });
-            userBadgesMap.set(userId, updatedBadges);
+            preferences.added.set(userId, updatedBadges);
         });
     }
 
@@ -375,23 +377,26 @@ async function loadData(run: number) {
         Object.entries(savedRemovedBadges).forEach(([userId, badgeIds]) => {
             if (!Array.isArray(badgeIds) || badgeIds.some((id) => typeof id !== "string"))
                 throw new Error("Invalid saved hidden badge entry");
-            removedBadgesMap.set(userId, new Set(badgeIds));
+            preferences.hidden.set(userId, new Set(badgeIds));
         });
     }
 }
 
 function saveData() {
     const userBadgesObject = Object.fromEntries(
-        Array.from(userBadgesMap, ([id, badges]) => [id, badges.map((badge) => ({ ...badge }))]),
+        Array.from(preferences.added, ([id, badges]) => [
+            id,
+            badges.map((badge) => ({ ...badge })),
+        ]),
     );
 
     const removedBadgesObject = Object.fromEntries(
-        Array.from(removedBadgesMap.entries()).map(([userId, badgeIds]) => [
+        Array.from(preferences.hidden.entries()).map(([userId, badgeIds]) => [
             userId,
             Array.from(badgeIds),
         ]),
     );
-    saveQueue = saveQueue
+    runtime.saves = runtime.saves
         .then(() =>
             DataStore.setMany([
                 ["userBadges", userBadgesObject],
@@ -402,15 +407,15 @@ function saveData() {
             console.error("[Badge Larper] failed to save badge preferences", err);
             showToast({ text: "Could not save badge preferences", variant: "critical" });
         });
-    return saveQueue;
+    return runtime.saves;
 }
 
 function invalidateCache(userId: string) {
-    profileCache.delete(userId);
+    runtime.profiles.delete(userId);
 }
 
 function invalidateProfiles() {
-    profileCache.clear();
+    runtime.profiles.clear();
 }
 
 function notifyProfileChanged(userId?: string) {
@@ -424,48 +429,48 @@ function notifyProfileChanged(userId?: string) {
 }
 
 function addBadgesToUser(userId: string, badges: CustomBadge[]) {
-    const existingBadges = userBadgesMap.get(userId) || [];
+    const existingBadges = preferences.added.get(userId) || [];
     badges.forEach((badge) => {
         const existingIndex = existingBadges.findIndex((b) => b.id === badge.id);
         if (existingIndex === -1) {
             existingBadges.push(badge);
         }
     });
-    userBadgesMap.set(userId, existingBadges);
+    preferences.added.set(userId, existingBadges);
     notifyProfileChanged(userId);
     saveData();
 }
 
 function removeBadgeFromUser(userId: string, badgeId: string) {
-    const existingBadges = userBadgesMap.get(userId) || [];
+    const existingBadges = preferences.added.get(userId) || [];
     const updatedBadges = existingBadges.filter((b) => b.id !== badgeId);
     if (updatedBadges.length > 0) {
-        userBadgesMap.set(userId, updatedBadges);
+        preferences.added.set(userId, updatedBadges);
     } else {
-        userBadgesMap.delete(userId);
+        preferences.added.delete(userId);
     }
     notifyProfileChanged(userId);
     saveData();
 }
 
 function getUserBadges(userId: string): CustomBadge[] {
-    return userBadgesMap.get(userId) || [];
+    return preferences.added.get(userId) || [];
 }
 
 function hideRealBadge(userId: string, badgeId: string) {
-    if (!removedBadgesMap.has(userId)) {
-        removedBadgesMap.set(userId, new Set());
+    if (!preferences.hidden.has(userId)) {
+        preferences.hidden.set(userId, new Set());
     }
-    removedBadgesMap.get(userId)!.add(badgeId);
+    preferences.hidden.get(userId)!.add(badgeId);
     notifyProfileChanged(userId);
     saveData();
 }
 
 function unhideRealBadge(userId: string, badgeId: string) {
-    if (removedBadgesMap.has(userId)) {
-        removedBadgesMap.get(userId)!.delete(badgeId);
-        if (removedBadgesMap.get(userId)!.size === 0) {
-            removedBadgesMap.delete(userId);
+    if (preferences.hidden.has(userId)) {
+        preferences.hidden.get(userId)!.delete(badgeId);
+        if (preferences.hidden.get(userId)!.size === 0) {
+            preferences.hidden.delete(userId);
         }
         notifyProfileChanged(userId);
         saveData();
@@ -473,7 +478,7 @@ function unhideRealBadge(userId: string, badgeId: string) {
 }
 
 function isRealBadgeHidden(userId: string, badgeId: string): boolean {
-    return removedBadgesMap.has(userId) && removedBadgesMap.get(userId)!.has(badgeId);
+    return preferences.hidden.has(userId) && preferences.hidden.get(userId)!.has(badgeId);
 }
 
 function toggleBadge(
@@ -490,8 +495,8 @@ function toggleBadge(
             showToast({ text: `Restored ${badge.title}`, variant: "success" });
         } else {
             const remaining = getUserBadges(userId).filter((b) => b.id !== badge.id);
-            if (remaining.length) userBadgesMap.set(userId, remaining);
-            else userBadgesMap.delete(userId);
+            if (remaining.length) preferences.added.set(userId, remaining);
+            else preferences.added.delete(userId);
             hideRealBadge(userId, badge.id);
             showToast({ text: `Removed ${badge.title}`, variant: "success" });
         }
@@ -507,17 +512,14 @@ function toggleBadge(
 }
 
 function giveAllBadges(userId: string) {
-    const hiddenBadges = removedBadgesMap.get(userId);
+    const hiddenBadges = preferences.hidden.get(userId);
     if (hiddenBadges) {
         for (const badge of availableBadges) hiddenBadges.delete(badge.id);
-        if (!hiddenBadges.size) removedBadgesMap.delete(userId);
+        if (!hiddenBadges.size) preferences.hidden.delete(userId);
     }
     addBadgesToUser(userId, availableBadges);
     showToast({ text: "Added all badges", variant: "success" });
 }
-
-let originalGetUserProfile: ProfileStore["getUserProfile"] | undefined;
-let patchedGetUserProfile: ProfileStore["getUserProfile"] | undefined;
 
 export default definePlugin({
     name: "Badge Larper",
@@ -526,31 +528,31 @@ export default definePlugin({
     authors: [{ id: 1204265766128455781n, name: "Kyowa" }],
 
     start() {
-        if (enabled) return;
-        enabled = true;
-        const run = ++generation;
+        if (runtime.active) return;
+        runtime.active = true;
+        const run = ++runtime.revision;
         void loadData(run)
             .then(() => {
-                if (!enabled || run !== generation) return;
-                const getUserProfile = (originalGetUserProfile = UserProfileStore.getUserProfile);
+                if (!runtime.active || run !== runtime.revision) return;
+                const getUserProfile = (runtime.originalGetter = UserProfileStore.getUserProfile);
                 if (typeof getUserProfile !== "function")
                     throw new Error("UserProfileStore.getUserProfile is unavailable");
-                patchedGetUserProfile = function (
-                    this: ProfileStore,
-                    ...args: Parameters<ProfileStore["getUserProfile"]>
+                runtime.patchedGetter = function (
+                    this: typeof UserProfileStore,
+                    ...args: Parameters<ProfileGetter>
                 ) {
                     const userId = args[0];
                     const userProfile = getUserProfile.apply(this, args);
-                    if (!enabled || run !== generation) return userProfile;
+                    if (!runtime.active || run !== runtime.revision) return userProfile;
                     if (!userProfile) return userProfile;
 
                     const hasCustomizations =
-                        userBadgesMap.has(userId) || removedBadgesMap.has(userId);
+                        preferences.added.has(userId) || preferences.hidden.has(userId);
                     if (!hasCustomizations) return userProfile;
 
                     try {
                         const signature = getSignature(userId);
-                        const cached = profileCache.get(userId);
+                        const cached = runtime.profiles.get(userId);
 
                         if (
                             cached &&
@@ -564,13 +566,13 @@ export default definePlugin({
                             ? Array.from(userProfile.badges)
                             : [];
 
-                        if (removedBadgesMap.has(userId)) {
-                            const hiddenBadges = removedBadgesMap.get(userId)!;
+                        if (preferences.hidden.has(userId)) {
+                            const hiddenBadges = preferences.hidden.get(userId)!;
                             newBadges = newBadges.filter((b) => !hiddenBadges.has(b.id));
                         }
 
-                        if (userBadgesMap.has(userId)) {
-                            const userBadges = userBadgesMap.get(userId)!;
+                        if (preferences.added.has(userId)) {
+                            const userBadges = preferences.added.get(userId)!;
                             userBadges.forEach((badgeObj) => {
                                 const { id, description, icon, link } = badgeObj;
                                 if (!id || !icon) return;
@@ -601,7 +603,11 @@ export default definePlugin({
                                 },
                             },
                         );
-                        profileCache.set(userId, { sourceProfile: userProfile, signature, result });
+                        runtime.profiles.set(userId, {
+                            sourceProfile: userProfile,
+                            signature,
+                            result,
+                        });
                         return result;
                     } catch (err) {
                         console.error(
@@ -611,13 +617,13 @@ export default definePlugin({
                         return userProfile;
                     }
                 };
-                UserProfileStore.getUserProfile = patchedGetUserProfile;
+                UserProfileStore.getUserProfile = runtime.patchedGetter;
                 UserProfileStore.addChangeListener(invalidateProfiles);
-                ready = true;
+                runtime.loaded = true;
                 notifyProfileChanged();
             })
             .catch((err) => {
-                if (!enabled || run !== generation) return;
+                if (!runtime.active || run !== runtime.revision) return;
                 console.error("[Badge Larper] failed to load badge preferences", err);
                 this.stop();
                 showToast({ text: "Could not load badge preferences", variant: "critical" });
@@ -625,28 +631,28 @@ export default definePlugin({
     },
 
     stop() {
-        enabled = false;
-        ready = false;
-        generation++;
-        if (patchedGetUserProfile) UserProfileStore.removeChangeListener(invalidateProfiles);
-        if (originalGetUserProfile && UserProfileStore.getUserProfile === patchedGetUserProfile) {
-            UserProfileStore.getUserProfile = originalGetUserProfile;
+        runtime.active = false;
+        runtime.loaded = false;
+        runtime.revision++;
+        if (runtime.patchedGetter) UserProfileStore.removeChangeListener(invalidateProfiles);
+        if (runtime.originalGetter && UserProfileStore.getUserProfile === runtime.patchedGetter) {
+            UserProfileStore.getUserProfile = runtime.originalGetter;
         }
-        userBadgesMap.clear();
-        removedBadgesMap.clear();
-        profileCache.clear();
-        originalGetUserProfile = undefined;
-        patchedGetUserProfile = undefined;
+        preferences.added.clear();
+        preferences.hidden.clear();
+        runtime.profiles.clear();
+        runtime.originalGetter = undefined;
+        runtime.patchedGetter = undefined;
         notifyProfileChanged();
     },
 
     contextMenus: {
         "user-context"(children, { user }) {
-            if (!user || !enabled || !ready) return;
+            if (!user || !runtime.active || !runtime.loaded) return;
 
             const currentUserBadges = getUserBadges(user.id);
-            const userProfile = originalGetUserProfile
-                ? originalGetUserProfile.call(UserProfileStore, user.id)
+            const userProfile = runtime.originalGetter
+                ? runtime.originalGetter.call(UserProfileStore, user.id)
                 : UserProfileStore.getUserProfile(user.id);
             const actualBadges = Array.isArray(userProfile?.badges) ? userProfile.badges : [];
 
@@ -688,14 +694,14 @@ export default definePlugin({
                         id="remove-all-badges"
                         color="danger"
                         action={() => {
-                            removedBadgesMap.set(
+                            preferences.hidden.set(
                                 user.id,
                                 new Set([
-                                    ...(removedBadgesMap.get(user.id) ?? []),
+                                    ...(preferences.hidden.get(user.id) ?? []),
                                     ...actualBadges.map((badge) => badge.id),
                                 ]),
                             );
-                            userBadgesMap.delete(user.id);
+                            preferences.added.delete(user.id);
                             notifyProfileChanged(user.id);
                             saveData();
 
@@ -707,8 +713,8 @@ export default definePlugin({
                         id="reset-badges"
                         color="default"
                         action={() => {
-                            userBadgesMap.delete(user.id);
-                            removedBadgesMap.delete(user.id);
+                            preferences.added.delete(user.id);
+                            preferences.hidden.delete(user.id);
                             notifyProfileChanged(user.id);
                             saveData();
 
